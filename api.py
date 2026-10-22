@@ -8,8 +8,11 @@ import pandas as pd
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
+from db import get_recent_predictions, init_db, save_prediction
+
 MODEL_FILE = Path(__file__).parent / "models" / "risk_model.joblib"
 model = joblib.load(MODEL_FILE)
+init_db()
 
 app = FastAPI(
     title="ClaimWise API",
@@ -53,8 +56,17 @@ def health():
 def predict(customer: Customer):
     """Predict whether a customer is likely to be high-cost."""
     features = to_features(customer)
-    probability = float(model.predict_proba(features)[0][1])
+    probability = round(float(model.predict_proba(features)[0][1]), 3)
+    high_cost = probability >= 0.5
+    prediction_id = save_prediction(customer, probability, high_cost)
     return {
-        "high_cost": probability >= 0.5,
-        "probability": round(probability, 3),
+        "prediction_id": prediction_id,
+        "high_cost": high_cost,
+        "probability": probability,
     }
+
+
+@app.get("/predictions")
+def recent_predictions(limit: int = 10):
+    """Return the most recent predictions from the database."""
+    return get_recent_predictions(limit)
